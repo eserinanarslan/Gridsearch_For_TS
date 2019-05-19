@@ -1,49 +1,34 @@
 # grid search sarima hyperparameters for daily female dataset
-import multiprocessing as mp
 from math import sqrt
+from multiprocessing import cpu_count
+from joblib import Parallel
+from joblib import delayed
 from warnings import catch_warnings
 from warnings import filterwarnings
-
-import joblib as jlib
-import pandas as pd
-from joblib import delayed
-from sklearn.metrics import mean_squared_error
 from statsmodels.tsa.statespace.sarimax import SARIMAX
+from sklearn.metrics import mean_squared_error
+
+import pandas as pd
+import ssl
 
 
 # one-step sarima forecast
 def sarima_forecast(history, config):
-    try:
-        order, sorder, trend = config
-        # define model
-        model = SARIMAX(history, order=order, seasonal_order=sorder, trend=trend, enforce_stationarity=False,
-                        enforce_invertibility=False)
-        # fit model
-        model_fit = model.fit(disp=False)
-        # make one step forecast
-        yhat = model_fit.predict(len(history), len(history))
-        return yhat[0]
-    except Exception as e:
-        print("sarima_forecast error")
-        print("Order {} sorder {} trend {}".format(order, sorder, trend))
+    order, sorder, trend = config
+    # define model
+    model = SARIMAX(history, order=order, seasonal_order=sorder, trend=trend, enforce_stationarity=False,
+                    enforce_invertibility=False)
+    # fit model
+    model_fit = model.fit(disp=False)
+    # make one step forecast
+    yhat = model_fit.predict(len(history), len(history))
+    print("yhat : ", yhat)
+    return yhat[0]
+
 
 # root mean squared error or rmse
 def measure_rmse(actual, predicted):
-    try:
-        return sqrt(mean_squared_error(actual, predicted))
-    except:
-        print("measure_rmse error")
-        print("actual", actual)
-        print("predicted", predicted)
-
-
-"""
-def measure_mape(val_1_data, n_test):
-    abs_err = np.divide(np.abs(np.subtract(val_1_data[:24], val_1_data[-n_test:])),val_1_data[-n_test:])
-    ape = np.multiply(abs_err, np.full(shape=abs_err.shape, fill_value=100))
-    shift_adjusted_mape = np.mean(ape, axis=0)
-    print("MAPE with adjusted time series: %s" % np.array2string(shift_adjusted_mape))
-"""
+    return sqrt(mean_squared_error(actual, predicted))
 
 
 # split a univariate dataset into train/test sets
@@ -56,7 +41,7 @@ def walk_forward_validation(data, n_test, cfg):
     predictions = list()
     # split dataset
     train, test = train_test_split(data, n_test)
-
+    print("Test data: {} , Test data len: {}".format(test, (len(test))))
     # seed history with training dataset
     history = [x for x in train]
     # step over each time-step in the test set
@@ -66,10 +51,11 @@ def walk_forward_validation(data, n_test, cfg):
         # store forecast in list of predictions
         predictions.append(yhat)
         # add actual observation to history for the next loop
-        history.append(test.iloc[i])
+        history.append(test[i])
     # estimate prediction error
+    print("Predict : ", predictions)
     error = measure_rmse(test, predictions)
-    #  error2 = measure_mape(test, n_test)
+    print("Error :", error)
     return error
 
 
@@ -81,14 +67,15 @@ def score_model(data, n_test, cfg, debug=False):
     # show all warnings and fail on exception if debugging
     if debug:
         result = walk_forward_validation(data, n_test, cfg)
+        print("if result : ", result)
     else:
         # one failure during model validation suggests an unstable config
-
         try:
             # never show warnings when grid searching, too noisy
             with catch_warnings():
                 filterwarnings("ignore")
                 result = walk_forward_validation(data, n_test, cfg)
+                print("else result : ", result)
         except:
             error = None
     # check for an interesting result
@@ -102,16 +89,14 @@ def grid_search(data, cfg_list, n_test, parallel=True):
     scores = None
     if parallel:
         # execute configs in parallel
-        executor = jlib.Parallel(n_jobs=mp.cpu_count(), backend='multiprocessing')
-        print("executer = ", executor)
+        executor = Parallel(n_jobs=cpu_count(), backend='multiprocessing')
+        print("if executer : ", executor)
         tasks = (delayed(score_model)(data, n_test, cfg) for cfg in cfg_list)
-        print("tasks = ", tasks)
         scores = executor(tasks)
-        print("Scores in if clause = ", scores)
+       # print("if scores : ", scores)
     else:
         scores = [score_model(data, n_test, cfg) for cfg in cfg_list]
-        print("Scores in else case = ", scores)
-
+        print("else scores : ", scores)
     # remove empty results
     scores = [r for r in scores if r[1] != None]
     # sort configs by error, asc
@@ -147,30 +132,20 @@ def sarima_configs(seasonal=[0]):
 
 if __name__ == '__main__':
     # load dataset
-
-    test_data = pd.read_csv("data/test.csv", delimiter=";", decimal=",")
-    test_data.head(10).append(test_data.tail(10))
-
-    val_1_data = test_data["Val_1"]
-    val_2_data = test_data["Val_2"]
-    val_3_data = test_data["Val_3"]
-
-    data = val_1_data.values
-
-    print("Values shape = ", val_1_data.shape)
+    ssl._create_default_https_context = ssl._create_unverified_context
+    address = 'https://raw.githubusercontent.com/jbrownlee/Datasets/master/daily-total-female-births.csv'
+    response = pd.read_csv(address)
+    data = response.values
+    print("data : ", data)
+    print(data.shape)
     # data split
-    print("***********************************")
-    print("data values : ", val_1_data.values)
-    print("***********************************")
-    n_test = 4
+    n_test = 165
     # model configs
     cfg_list = sarima_configs()
-    print(cfg_list)
+    print("sarima config done")
     # grid search
-    scores = grid_search(data, cfg_list, n_test)#, parallel=False)
+    scores = grid_search(data, cfg_list, n_test)
     print('done')
     # list top 3 configs
-    print('scores in main step : ', scores)
     for cfg, error in scores[:3]:
-        print("hello")
         print(cfg, error)
