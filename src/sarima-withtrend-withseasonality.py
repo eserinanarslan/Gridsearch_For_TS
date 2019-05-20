@@ -1,4 +1,4 @@
-# grid search sarima hyperparameters for monthly shampoo sales dataset
+# grid search sarima hyperparameters for monthly car sales dataset
 import ssl
 from math import sqrt
 from multiprocessing import cpu_count
@@ -8,26 +8,36 @@ from warnings import catch_warnings
 from warnings import filterwarnings
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 from sklearn.metrics import mean_squared_error
+
 import pandas as pd
 
 
 # one-step sarima forecast
 def sarima_forecast(history, config):
-    order, sorder, trend = config
-    # define model
-    model = SARIMAX(history, order=order, seasonal_order=sorder, trend=trend, enforce_stationarity=False,
-                    enforce_invertibility=False)
-    # fit model
-    model_fit = model.fit(disp=False)
-    # make one step forecast
-    yhat = model_fit.predict(len(history), len(history))
-    return yhat[0]
+    try:
+        order, sorder, trend = config
+        # define model
+        model = SARIMAX(history, order=order, seasonal_order=sorder, trend=trend, enforce_stationarity=False,
+                        enforce_invertibility=False)
+        # fit model
+        model_fit = model.fit(disp=False)
+        # make one step forecast
+        yhat = model_fit.predict(len(history), len(history))
+        return yhat[0]
+    except Exception as e:
+        print("sarima_forecast error")
+        print("Order {} sorder {} trend {}".format(order, sorder, trend))
 
 
 # root mean squared error or rmse
 def measure_rmse(actual, predicted):
-    return sqrt(mean_squared_error(actual, predicted))
-
+    try:
+        print("Heloooooooooooooooooooooooooo")
+        return sqrt(mean_squared_error(actual, predicted))
+    except:
+        print("measure_rmse error")
+        print("actual", actual)
+        print("predicted", predicted)
 
 # split a univariate dataset into train/test sets
 def train_test_split(data, n_test):
@@ -70,16 +80,14 @@ def score_model(data, n_test, cfg, debug=False):
                 filterwarnings("ignore")
                 result = walk_forward_validation(data, n_test, cfg)
         except:
-            print("Exception exist")
             error = None
     # check for an interesting result
     if result is not None:
+        print("Exception exist")
         print(' > Model[%s] %.3f' % (key, result))
     return (key, result)
 
-"""
-test
-"""
+
 # grid search configs
 def grid_search(data, cfg_list, n_test, parallel=True):
     scores = None
@@ -128,15 +136,10 @@ def sarima_configs(seasonal=[0]):
     return models
 
 
-# parse dates
-def custom_parser(x):
-    return pd.datetime.strptime('195' + x, '%Y-%m')
-
-
 if __name__ == '__main__':
     # load dataset
     ssl._create_default_https_context = ssl._create_unverified_context
-    address = 'https://raw.githubusercontent.com/jbrownlee/Datasets/master/shampoo.csv'
+    address = 'https://raw.githubusercontent.com/jbrownlee/Datasets/master/monthly-car-sales.csv'
     response = pd.read_csv(address)
     data = response.values
     print("data : ", data)
@@ -144,7 +147,7 @@ if __name__ == '__main__':
     # data split
     n_test = 12
     # model configs
-    cfg_list = sarima_configs()
+    cfg_list = sarima_configs(seasonal=[0, 6, 12])
     # grid search
     scores = grid_search(data, cfg_list, n_test)
     print('done')
