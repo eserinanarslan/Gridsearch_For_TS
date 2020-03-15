@@ -1,0 +1,6 @@
+dataset_path: "../../data/test.csv"
+train_data_percentage: 60
+predict_next: 4
+figure_path: "../../results/ARIMA"
+endogenous_variables:
+  - "Val_1"
